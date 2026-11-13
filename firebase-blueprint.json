@@ -1,0 +1,182 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated SDR or GTM Engineer workspace profile.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "enum": ["SDR", "AE", "GTM_ENGINEER", "ADMIN"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "role", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated private email and preferences for an authenticated SDR.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "updatedAt"]
+    },
+    "SdrLeadSync": {
+      "title": "SdrLeadSync",
+      "description": "Real-time synced lead state in an SDR user's personal approval queue.",
+      "type": "object",
+      "properties": {
+        "leadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "companyName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "companyDomain": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "contactName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "jobTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "stage": {
+          "type": "string",
+          "enum": ["NEW_ENRICHED", "PENDING_REVIEW", "APPROVED_SYNCING", "DISQUALIFIED"]
+        },
+        "totalScore": {
+          "type": "number"
+        },
+        "overrideReason": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "hubspotSynced": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "leadId",
+        "ownerUid",
+        "companyName",
+        "companyDomain",
+        "contactName",
+        "jobTitle",
+        "stage",
+        "totalScore",
+        "hubspotSynced",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ScoringRulePreset": {
+      "title": "ScoringRulePreset",
+      "description": "Saved ICP scoring weights synced to the user's Firestore workspace.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "industryWeight": { "type": "number" },
+        "sizeWeight": { "type": "number" },
+        "geographyWeight": { "type": "number" },
+        "seniorityWeight": { "type": "number" },
+        "useCaseWeight": { "type": "number" },
+        "intentWeight": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerUid",
+        "industryWeight",
+        "sizeWeight",
+        "geographyWeight",
+        "seniorityWeight",
+        "useCaseWeight",
+        "intentWeight",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "SDR workspace profile document."
+    },
+    "/users/{userId}/private/info": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Owner-only PII email document."
+    },
+    "/users/{userId}/leads/{leadId}": {
+      "schema": { "$ref": "#/entities/SdrLeadSync" },
+      "description": "Real-time personal SDR queue synced across tabs."
+    },
+    "/users/{userId}/configs/{configId}": {
+      "schema": { "$ref": "#/entities/ScoringRulePreset" },
+      "description": "User's ICP scoring rule preset."
+    }
+  }
+}

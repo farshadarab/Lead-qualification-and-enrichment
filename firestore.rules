@@ -1,0 +1,202 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerified() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerified() && (
+        request.auth.token.email == 'farshadceo@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'displayName', 'role', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.role in ['SDR', 'AE', 'GTM_ENGINEER'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data) {
+      return data.keys().hasAll(['uid', 'email', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSdrLead(data) {
+      return data.keys().hasAll([
+          'leadId', 'ownerUid', 'companyName', 'companyDomain', 'contactName',
+          'jobTitle', 'stage', 'totalScore', 'hubspotSynced', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'leadId', 'ownerUid', 'companyName', 'companyDomain', 'contactName',
+          'jobTitle', 'stage', 'totalScore', 'overrideReason', 'hubspotSynced',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.leadId) &&
+        isValidId(data.ownerUid) &&
+        data.companyName is string && data.companyName.size() >= 1 && data.companyName.size() <= 160 &&
+        data.companyDomain is string && data.companyDomain.size() >= 1 && data.companyDomain.size() <= 160 &&
+        data.contactName is string && data.contactName.size() >= 1 && data.contactName.size() <= 160 &&
+        data.jobTitle is string && data.jobTitle.size() >= 1 && data.jobTitle.size() <= 160 &&
+        data.stage in ['NEW_ENRICHED', 'PENDING_REVIEW', 'APPROVED_SYNCING', 'DISQUALIFIED'] &&
+        (data.totalScore is int || data.totalScore is float) &&
+        data.totalScore >= 0 && data.totalScore <= 100 &&
+        (!('overrideReason' in data) || (data.overrideReason is string && data.overrideReason.size() <= 500)) &&
+        data.hubspotSynced is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidScoringConfig(data) {
+      return data.keys().hasAll([
+          'ownerUid', 'industryWeight', 'sizeWeight', 'geographyWeight',
+          'seniorityWeight', 'useCaseWeight', 'intentWeight', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerUid', 'industryWeight', 'sizeWeight', 'geographyWeight',
+          'seniorityWeight', 'useCaseWeight', 'intentWeight', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.ownerUid) &&
+        (data.industryWeight is int || data.industryWeight is float) && data.industryWeight >= 0 && data.industryWeight <= 100 &&
+        (data.sizeWeight is int || data.sizeWeight is float) && data.sizeWeight >= 0 && data.sizeWeight <= 100 &&
+        (data.geographyWeight is int || data.geographyWeight is float) && data.geographyWeight >= 0 && data.geographyWeight <= 100 &&
+        (data.seniorityWeight is int || data.seniorityWeight is float) && data.seniorityWeight >= 0 && data.seniorityWeight <= 100 &&
+        (data.useCaseWeight is int || data.useCaseWeight is float) && data.useCaseWeight >= 0 && data.useCaseWeight <= 100 &&
+        (data.intentWeight is int || data.intentWeight is float) && data.intentWeight >= 0 && data.intentWeight <= 100 &&
+        (data.industryWeight + data.sizeWeight + data.geographyWeight + data.seniorityWeight + data.useCaseWeight + data.intentWeight) == 100 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isOwner(adminId);
+      allow list, create, update, delete: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isVerified() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isValidId(userId) && isOwner(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || (
+            isOwner(userId) &&
+            incoming().role == existing().role &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(userId) && isAdmin();
+
+      match /private/info {
+        allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+        allow list: if false;
+        allow create: if isValidId(userId) && isOwner(userId) &&
+          exists(/databases/$(database)/documents/users/$(userId)) &&
+          isValidUserPrivateInfo(incoming()) &&
+          incoming().uid == request.auth.uid &&
+          incoming().updatedAt == request.time;
+        allow update: if isValidId(userId) && (isOwner(userId) || isAdmin()) &&
+          isValidUserPrivateInfo(incoming()) &&
+          incoming().uid == existing().uid &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt']);
+        allow delete: if isValidId(userId) && isAdmin();
+      }
+
+      match /leads/{leadId} {
+        allow get: if isValidId(userId) && isValidId(leadId) && (isOwner(userId) || isAdmin());
+        allow list: if isValidId(userId) && isVerified() && (resource.data.ownerUid == request.auth.uid || isAdmin());
+        allow create: if isValidId(userId) && isValidId(leadId) && isOwner(userId) &&
+          exists(/databases/$(database)/documents/users/$(userId)) &&
+          isValidSdrLead(incoming()) &&
+          incoming().ownerUid == request.auth.uid &&
+          incoming().leadId == leadId &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time;
+        allow update: if isValidId(userId) && isValidId(leadId) &&
+          isValidSdrLead(incoming()) &&
+          incoming().ownerUid == existing().ownerUid &&
+          incoming().leadId == existing().leadId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            isAdmin() || (
+              isOwner(userId) &&
+              existing().ownerUid == request.auth.uid &&
+              existing().stage != 'DISQUALIFIED' && (
+                (incoming().stage in ['NEW_ENRICHED', 'PENDING_REVIEW', 'APPROVED_SYNCING', 'DISQUALIFIED'] &&
+                  incoming().diff(existing()).affectedKeys().hasOnly(['stage', 'totalScore', 'overrideReason', 'hubspotSynced', 'updatedAt']))
+              )
+            )
+          );
+        allow delete: if isValidId(userId) && isValidId(leadId) && (isOwner(userId) || isAdmin());
+      }
+
+      match /configs/{configId} {
+        allow get: if isValidId(userId) && isValidId(configId) && (isOwner(userId) || isAdmin());
+        allow list: if isValidId(userId) && isVerified() && (resource.data.ownerUid == request.auth.uid || isAdmin());
+        allow create: if isValidId(userId) && isValidId(configId) && isOwner(userId) &&
+          exists(/databases/$(database)/documents/users/$(userId)) &&
+          isValidScoringConfig(incoming()) &&
+          incoming().ownerUid == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time;
+        allow update: if isValidId(userId) && isValidId(configId) &&
+          isValidScoringConfig(incoming()) &&
+          incoming().ownerUid == existing().ownerUid &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            isAdmin() || (
+              isOwner(userId) &&
+              existing().ownerUid == request.auth.uid &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'industryWeight', 'sizeWeight', 'geographyWeight',
+                'seniorityWeight', 'useCaseWeight', 'intentWeight', 'updatedAt'
+              ])
+            )
+          );
+        allow delete: if isValidId(userId) && isValidId(configId) && (isOwner(userId) || isAdmin());
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "GTM Signal & SDR Command Center",
+  "description": "Real-time B2B inbound lead enrichment, ICP scoring, grounded Gemini sales dossiers, multi-channel AI outreach, and HubSpot CRM sync workspace.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
